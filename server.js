@@ -24,6 +24,11 @@ const openai = new OpenAI({
 // Conversation memory
 let conversationHistory = [];
 
+// ✅ ADD THIS — GET ROUTE FOR UPTIMEROBOT
+app.get("/api/chat", (req, res) => {
+  res.json({ status: "AI API is awake" });
+});
+
 const websiteInfo = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
 You also know everything about this website and its CV generator features, so you can help users directly if their questions relate to it.
 
@@ -80,9 +85,9 @@ Your Behavior:
 - Act like a full-featured GPT-4o-mini AI for all questions.
 - You can provide guidance about the CV generator proactively.
 - Try to keep responses short.
-- Be helpful, smart, clear, and friendly.`; // keep the full text as before
+- Be helpful, smart, clear, and friendly.`;
 
-// AI route
+// AI route (POST)
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
