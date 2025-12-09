@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ultimate Professional CV Generator + AI Helper</title>
+
+<!-- External Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+<style>
+  /* ---------------- Global ---------------- */
+  body { font-family: 'Arial', sans-serif; margin:0; padding:20px; background:#eef1f5; }
+  h1 { text-align:center; font-size:32px; margin-bottom:18px; color:#1d2940; }
+  .container { max-width:1400px; margin:auto; display:flex; flex-direction:column; gap:18px; }
+
+  /* Form */
+  .form-box { background:white; padding:22px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.12); }
+  label { display:block; margin-top:10px; font-weight:700; color:#333; }
+  input, textarea { width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; margin-top:6px; font-size:14px; box-sizing:border-box; }
+  .btn-row { margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; }
+  button { padding:12px 16px; border-radius:10px; border:none; cursor:pointer; font-weight:700; }
+  .btn-primary { background:#007bff; color:white; }
+  .btn-green { background:#1fa04a; color:white; }
+  .btn-ai { background:#ff5722; color:white; margin-left:auto; }
+
+  /* Preview container */
+  #previewCV, #previewATSCV {
+    width:100%;
+    display:none;
+    margin-top:6px;
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow:0 10px 40px rgba(0,0,0,0.18);
+    background:#fff;
+    padding:0;
+  }
+
+  /* Normal CV layout */
+  .cv-wrapper { display:flex; width:100%; flex-wrap:wrap; }
+  .left-side {
+    flex:1;
+    background: linear-gradient(180deg, #1d2940, #253152);
+    color:white;
+    padding:40px 30px;
+    box-sizing:border-box;
+  }
+  .left-side h2 { font-size:28px; margin:0; font-weight:900; }
+  .role { margin-top:6px; font-size:15px; opacity:0.95; }
+  .contact-info { font-size:14px; margin-top:12px; line-height:1.5; }
+  .section-title { margin-top:20px; font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:1px; border-left:4px solid #4a90e2; padding-left:10px; margin-bottom:10px; }
+  .skill-bar { background:#253152; border-radius:5px; margin-bottom:10px; overflow:hidden; }
+  .skill-level { height:14px; background:#4a90e2; width:0%; transition:1s; }
+
+  .right-side {
+    flex:1;
+    padding:36px;
+    background:#f3f5f9;
+    box-sizing:border-box;
+    border-left:2px solid rgba(0,0,0,0.04);
+  }
+  .line { height:4px; width:100%; background:#4a90e2; border-radius:2px; margin-bottom:12px; }
+
+  @media(max-width:1024px){
+    .cv-wrapper{flex-direction:column;}
+    .left-side,.right-side{width:100%;}
+  }
+
+  /* ---------------- ATS CV styles ---------------- */
+  .ats-container {
+    padding:20px;
+    background: #fafafa;
+    color:#111;
+    box-sizing:border-box;
+  }
+  .ats-header {
+    text-align:center;
+    padding-bottom:12px;
+    border-bottom:3px solid rgba(24,160,150,0.12);
+    margin-bottom:12px;
+  }
+  .ats-name { font-size:20px; font-weight:900; color:#0d5150; letter-spacing:0.6px; }
+  .ats-role { font-size:13px; font-weight:700; color:#0b6b6a; margin-top:4px; }
+  .ats-contact { text-align:center; font-size:12px; color:#333; margin-top:8px; }
+  .ats-main { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; }
+  .ats-section { background:transparent; padding:8px 10px; box-sizing:border-box; }
+  .ats-section h3 { margin:0 0 6px 0; font-size:12px; font-weight:800; color:#0b6b6a; border-bottom:1px solid rgba(11,107,106,0.12); padding-bottom:6px; }
+  .ats-list { margin:8px 0 0 0; padding-left:14px; }
+  .ats-list li { margin-bottom:6px; font-size:12.5px; color:#222; line-height:1.35; }
+  @media(max-width:800px){ .ats-main { grid-template-columns:1fr; } }
+  .ats-divider { height:1px; background:rgba(11,107,106,0.08); margin:12px 0; }
+
+  /* ---------------- AI Helper Styles ---------------- */
+#aiChat {
+  display:none;
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  width:360px;
+  max-width:calc(100% - 40px);
+  background:white;
+  border:2px solid #007bff;
+  border-radius:12px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.2);
+  z-index:9999;
+  display:flex;
+  flex-direction:column;
+  transition: all 0.3s ease;
+}
+#aiChat.minimized {
+  height:40px;
+  overflow:hidden;
+  width:200px;
+}
+#aiChat.minimized #aiChatBody,
+#aiChat.minimized #aiInputContainer {
+  display:none;
+}
+#aiChatHeader {
+  background:#007bff;
+  color:white;
+  padding:12px;
+  font-weight:700;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-radius:10px 10px 0 0;
+}
+#aiChatHeader div { display:flex; align-items:center; }
+#aiChatBody {
+  padding: 12px;
+  flex: 1;
+  background: #f9f9f9;
+  overflow-y: auto;        /* Enable vertical scrolling */
+  max-height: 300px;       /* Fixed max height */
+  min-height: 30px;        /* Reduced min-height to avoid huge blank space */
+  padding-bottom: 6px;     /* Small padding so messages aren’t glued to input */
+  scrollbar-width: thin;   /* Optional: thin scrollbar for Firefox */
+}
+
+/* Optional: nicer scrollbar for Webkit browsers (Chrome, Edge, Safari) */
+#aiChatBody::-webkit-scrollbar {
+  width: 6px;
+}
+#aiChatBody::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+  border-radius: 3px;
+}
+
+#aiInputContainer { display:flex; border-top:1px solid #ddd; }
+#aiInput { flex:1; padding:10px; border:none; outline:none; font-size:14px; }
+#aiSend { padding:10px; background:#007bff; color:white; border:none; cursor:pointer; }
+
+@media(max-width:768px){
+  #aiChat{ width:92%; right:4%; bottom:12px; }
+}
+
+</style>
+</head>
+<body>
+
+<h1>Ultimate Professional CV Generator</h1>
+
+<div class="container">
+  <div class="form-box">
+    <h2>Enter Your Details</h2>
+
+    <label>Name</label>
+    <input id="nameInput" type="text" placeholder="John Doe">
+
+    <label>Role / Position</label>
+    <input id="roleInput" type="text" placeholder="Software Engineer">
+
+    <label>Email</label>
+    <input id="emailInput" type="text" placeholder="john@example.com">
+
+    <label>Phone Number</label>
+    <input id="phoneInput" type="text" placeholder="+123 456 7890">
+
+    <label>Address</label>
+    <input id="addressInput" type="text" placeholder="City, Country">
+
+    <label>Gender</label>
+    <input id="genderInput" type="text" placeholder="Male/Female">
+
+    <label>Profile Summary</label>
+    <textarea id="aboutInput" placeholder="Write your summary here..."></textarea>
+
+    <label>Skills (Python-90, HTML-85)</label>
+    <textarea id="skillsInput" placeholder="Python-90, HTML-85"></textarea>
+
+    <label>Languages</label>
+    <textarea id="langInput" placeholder="English, Hindi"></textarea>
+
+    <label>Hobbies</label>
+    <textarea id="hobbyInput" placeholder="Reading, Coding"></textarea>
+
+    <label>Work Experience</label>
+    <textarea id="workInput" placeholder="Role | Company | Year | Description"></textarea>
+
+    <label>Education</label>
+    <textarea id="eduInput" placeholder="Degree | School | Year"></textarea>
+
+    <div class="btn-row">
+      <button class="btn-primary" onclick="generatePreview()">Preview Normal CV</button>
+      <button class="btn-green" onclick="downloadPDF()">Download Normal CV</button>
+
+      <button class="btn-primary" onclick="generateATSPreview()">Preview ATS CV</button>
+      <button class="btn-green" onclick="downloadATSPDF()">Download ATS CV</button>
+
+      <button class="btn-ai" onclick="toggleAIChat()">Open AI</button>
+    </div>
+  </div>
+
+  <!-- Normal preview -->
+  <div id="previewCV">
+    <div class="cv-wrapper">
+      <div class="left-side">
+        <h2 id="pName"></h2>
+        <p class="role" id="pRole"></p>
+
+        <div class="contact-info">
+          <p><i class="fas fa-envelope"></i> <span id="pEmail"></span></p>
+          <p><i class="fas fa-phone"></i> <span id="pPhone"></span></p>
+          <p><i class="fas fa-location-dot"></i> <span id="pAddress"></span></p>
+          <p><i class="fas fa-venus-mars"></i> <span id="pGender"></span></p>
+        </div>
+
+        <div class="section-title">Skills</div>
+        <div id="pSkills"></div>
+
+        <div class="section-title">Languages</div>
+        <ul id="pLang"></ul>
+
+        <div class="section-title">Hobbies</div>
+        <ul id="pHobby"></ul>
+      </div>
+
+      <div class="right-side">
+        <div class="timeline-section">
+          <div class="section-title">Profile</div>
+          <div class="line"></div>
+          <p id="pAbout"></p>
+        </div>
+
+        <div class="timeline-section">
+          <div class="section-title">Work Experience</div>
+          <div class="line"></div>
+          <ul id="pWork"></ul>
+        </div>
+
+        <div class="timeline-section">
+          <div class="section-title">Education</div>
+          <div class="line"></div>
+          <ul id="pEdu"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ATS preview -->
+  <div id="previewATSCV" style="display:none;">
+    <div class="ats-container" id="atsContainer"></div>
+  </div>
+</div>
+
+<!-- AI Helper -->
+<div id="aiChat" role="dialog" aria-hidden="true">
+  <div id="aiChatHeader">
+    <span>AI Helper</span>
+    <div>
+      <button id="aiMinimizeBtn" style="background:none;border:none;color:white;cursor:pointer;font-size:14px;margin-right:6px;">_</button>
+      <span style="cursor:pointer;" onclick="toggleAIChat()">✖</span>
+    </div>
+  </div>
+  <div id="aiChatBody"></div>
+
+  
+
+  <div id="aiInputContainer">
+    <input id="aiInput" type="text" placeholder="Ask me anything..." />
+    <button id="aiSend">Send</button>
+  </div>
+</div>
+
+<script>
+/* helper */
+function $(id){ return document.getElementById(id); }
+
+/* ---------------- Normal preview functions ---------------- */
+function generatePreview(){
+  $("previewCV").style.display = "block";
+  $("previewATSCV").style.display = "none";
+
+  $("pName").innerText = $("nameInput").value || "Your Name";
+  $("pRole").innerText = $("roleInput").value || "";
+  $("pEmail").innerText = $("emailInput").value || "";
+  $("pPhone").innerText = $("phoneInput").value || "";
+  $("pAddress").innerText = $("addressInput").value || "";
+  $("pGender").innerText = $("genderInput").value || "";
+  $("pAbout").innerText = $("aboutInput").value || "";
+
+  $("pSkills").innerHTML = "";
+  const skillsRaw = $("skillsInput").value || "";
+  skillsRaw.split(",").forEach(s=>{
+    if(s.trim()){
+      let [name,val] = s.split("-");
+      name = name ? name.trim() : s.trim();
+      val = val ? val.trim() : "80";
+      $("pSkills").innerHTML += `<div style="font-weight:700;margin-top:6px">${name}</div>
+        <div class="skill-bar"><div class="skill-level" style="width:${val}%"></div></div>`;
+    }
+  });
+
+  $("pLang").innerHTML = "";
+  ($("langInput").value || "").split(",").forEach(l=>{
+    if(l.trim()) $("pLang").innerHTML += `<li>${l.trim()}</li>`;
+  });
+
+  $("pHobby").innerHTML = "";
+  ($("hobbyInput").value || "").split(",").forEach(h=>{
+    if(h.trim()) $("pHobby").innerHTML += `<li>${h.trim()}</li>`;
+  });
+
+  $("pWork").innerHTML = "";
+  ($("workInput").value || "").split("\n").forEach(w=>{
+    if(w.trim()) $("pWork").innerHTML += `<li>${w.trim()}</li>`;
+  });
+
+  $("pEdu").innerHTML = "";
+  ($("eduInput").value || "").split("\n").forEach(e=>{
+    if(e.trim()) $("pEdu").innerHTML += `<li>${e.trim()}</li>`;
+  });
+
+  setTimeout(()=>document.querySelectorAll(".skill-level").forEach(el=>{
+    const width = el.style.width || "70%";
+    el.style.width = width;
+  }), 80);
+}
+
+/* ---------------- ATS preview + download ---------------- */
+function escapeHtml(text){
+  if(!text) return "";
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function buildATSHtml(){
+  const name = ($("nameInput").value || "Your Name").toUpperCase();
+  const role = $("roleInput").value || "";
+  const email = $("emailInput").value || "";
+  const phone = $("phoneInput").value || "";
+  const address = $("addressInput").value || "";
+  const about = $("aboutInput").value || "";
+
+  const skillsList = [];
+  ($("skillsInput").value || "").split(",").forEach(s=>{
+    if(s.trim()){ const parts=s.split("-"); skillsList.push(parts[0].trim()); }
+  });
+
+  const languages = [];
+  ($("langInput").value || "").split(",").forEach(l=>{ if(l.trim()) languages.push(l.trim()); });
+
+  const workList = [];
+  ($("workInput").value || "").split("\n").forEach(w=>{ if(w.trim()) workList.push(w.trim()); });
+
+  const eduList = [];
+  ($("eduInput").value || "").split("\n").forEach(e=>{ if(e.trim()) eduList.push(e.trim()); });
+
+  return `
+    <div class="ats-header">
+      <div class="ats-name">${escapeHtml(name)}</div>
+      <div class="ats-role">${escapeHtml(role)}</div>
+      <div class="ats-contact">${escapeHtml(email)} ${ email && (phone || address) ? " | " : "" } ${escapeHtml(phone)} ${ (phone && address) ? " | " : "" } ${escapeHtml(address)}</div>
+    </div>
+
+    <div class="ats-divider"></div>
+
+    <div class="ats-main">
+      <div class="ats-section" style="grid-column: 1 / span 1;">
+        <h3>PROFILE</h3>
+        <div><p style="margin:6px 0 0 0; font-size:13px; color:#222;">${escapeHtml(about)}</p></div>
+      </div>
+
+      <div class="ats-section" style="grid-column: 2 / span 1;">
+        <h3>SKILLS</h3>
+        <ul class="ats-list">${skillsList.map(s=>`<li>${escapeHtml(s)}</li>`).join("")}</ul>
+      </div>
+
+      <div class="ats-section" style="grid-column: 1 / span 1;">
+        <h3>LANGUAGES</h3>
+        <ul class="ats-list">${languages.map(l=>`<li>${escapeHtml(l)}</li>`).join("")}</ul>
+      </div>
+
+      <div class="ats-section" style="grid-column: 2 / span 1;">
+        <h3>EDUCATION</h3>
+        <ul class="ats-list">${eduList.map(ed=>`<li>${escapeHtml(ed)}</li>`).join("")}</ul>
+      </div>
+
+      <div class="ats-section" style="grid-column: 1 / span 2;">
+        <h3>WORK EXPERIENCE</h3>
+        <ul class="ats-list">${workList.map(w=>`<li>${escapeHtml(w)}</li>`).join("")}</ul>
+      </div>
+    </div>
+
+    <div class="ats-divider" style="margin-top:14px"></div>
+    <div style="font-size:11px;color:#666;margin-top:8px;text-align:center;">Generated by Professional CV Generator</div>
+  `;
+}
+
+function generateATSPreview(){
+  $("previewCV").style.display = "none";
+  $("previewATSCV").style.display = "block";
+  $("atsContainer").innerHTML = buildATSHtml();
+}
+
+/* ---------------- PDF Downloads ---------------- */
+function downloadPDF(){
+  html2canvas($("previewCV")).then(canvas=>{
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jspdf.jsPDF('p','pt','a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = canvas.height * pdfWidth / canvas.width;
+    pdf.addImage(imgData,'PNG',0,0,pdfWidth,pdfHeight);
+    pdf.save('CV.pdf');
+  });
+}
+function downloadATSPDF(){
+  html2canvas($("previewATSCV")).then(canvas=>{
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jspdf.jsPDF('p','pt','a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = canvas.height * pdfWidth / canvas.width;
+    pdf.addImage(imgData,'PNG',0,0,pdfWidth,pdfHeight);
+    pdf.save('ATS_CV.pdf');
+  });
+}
+
+
+/* ---------------- AI Helper ---------------- */
+const aiChat = $("aiChat");
+const aiBody = $("aiChatBody");
+const aiInput = $("aiInput");
+const aiSend = $("aiSend");
+const aiMinimizeBtn = $("aiMinimizeBtn");
+
+// Flag to prevent sending while AI is thinking
+let aiThinking = false;
+
+// Show initial greeting once
+window.addEventListener("load", () => {
+  aiBody.innerHTML = `<div><b>AI:</b> Hello! I’m your AI assistant. How may I assist you today?</div>`;
+  aiBody.scrollTop = aiBody.scrollHeight;
+});
+
+function toggleAIChat(){
+  if(aiChat.style.display === "none" || aiChat.style.display === ""){
+    aiChat.style.display = "flex";
+    aiChat.setAttribute("aria-hidden","false");
+  } else {
+    aiChat.style.display = "none";
+    aiChat.setAttribute("aria-hidden","true");
+  }
+}
+
+aiMinimizeBtn.addEventListener("click", ()=> {
+  aiChat.classList.toggle("minimized");
+});
+
+aiSend.addEventListener("click", sendAIMessage);
+aiInput.addEventListener("keydown", (e) => {
+  if(e.key==="Enter") sendAIMessage();
+});
+
+async function sendAIMessage(){
+  if(aiThinking) return; // prevent sending while AI is thinking
+  const msg = aiInput.value.trim();
+  if(!msg) return;
+
+  // Show user's message
+  aiBody.innerHTML += `<div><b>You:</b> ${msg}</div>`;
+  aiInput.value="";
+  aiBody.scrollTop = aiBody.scrollHeight;
+
+  try{
+    aiThinking = true;
+    aiSend.disabled = true;
+
+    // Show thinking indicator
+    const thinkingDiv = document.createElement("div");
+    thinkingDiv.id = "thinkingIndicator";
+    thinkingDiv.innerHTML = `<b>AI:</b> <i>Thinking...</i>`;
+    aiBody.appendChild(thinkingDiv);
+    aiBody.scrollTop = aiBody.scrollHeight;
+
+    const response = await fetch("http://localhost:3000/api/chat", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({message:msg})
+    });
+
+    const data = await response.json();
+
+    // Remove thinking indicator
+    thinkingDiv.remove();
+
+    // Show AI response
+    aiBody.innerHTML += `<div><b>AI:</b> ${data.reply}</div>`;
+    aiBody.scrollTop = aiBody.scrollHeight;
+  } catch(err) {
+    const thinkingDivEl = $("thinkingIndicator");
+    if(thinkingDivEl) thinkingDivEl.remove();
+
+    aiBody.innerHTML += `<div style="color:red"><b>AI:</b> Error connecting</div>`;
+    aiBody.scrollTop = aiBody.scrollHeight;
+  } finally {
+    aiThinking = false;
+    aiSend.disabled = false;
+  }
+}
+
+
+</script>
+
+
+
+</body>
+</html>
