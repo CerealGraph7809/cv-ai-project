@@ -2,12 +2,20 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from the "public" folder
+app.use(express.static(path.join(__dirname, "public")));
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -72,9 +80,7 @@ Your Behavior:
 - Act like a full-featured GPT-4o-mini AI for all questions.
 - You can provide guidance about the CV generator proactively.
 - Try to keep responses short.
-- Be helpful, smart, clear, and friendly.
-`;
-
+- Be helpful, smart, clear, and friendly.`; // keep the full text as before
 
 // AI route
 app.post("/api/chat", async (req, res) => {
@@ -113,9 +119,9 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// Render needs this to work
+// Serve index.html for root
 app.get("/", (req, res) => {
-  res.send("API is running!");
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // Start server
