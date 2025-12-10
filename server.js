@@ -14,9 +14,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the "public" folder
+// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
+// Init OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -24,12 +25,35 @@ const openai = new OpenAI({
 // Conversation memory
 let conversationHistory = [];
 
-// ✅ ADD THIS — GET ROUTE FOR UPTIMEROBOT
-app.get("/api/chat", (req, res) => {
-  res.json({ status: "AI API is awake" });
+/* ------------------------------------------------
+   🚀 UPTIMEROBOT HEALTH CHECK (FAST)
+------------------------------------------------ */
+app.get("/api/ping", (req, res) => {
+  res.json({ status: "online", time: Date.now() });
 });
 
-const websiteInfo = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
+/* ------------------------------------------------
+   🔥 MODEL WARMUP ROUTE (VERY IMPORTANT)
+   - UptimeRobot should ping this every 5 minutes.
+   - Keeps OpenAI model HOT and instant.
+------------------------------------------------ */
+app.get("/api/warm", async (req, res) => {
+  try {
+    await openai.responses.create({
+      model: "gpt-4o-mini",
+      input: "ping"
+    });
+
+    res.json({ warmed: true });
+  } catch (error) {
+    res.json({ warmed: false, error: error.message });
+  }
+});
+
+/* ------------------------------------------------
+   🤖 MAIN AI CHAT ROUTE
+------------------------------------------------ */
+const systemMessage = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
 You also know everything about this website and its CV generator features, so you can help users directly if their questions relate to it.
 
 ABOUT THE WEBSITE:
@@ -85,9 +109,11 @@ Your Behavior:
 - Act like a full-featured GPT-4o-mini AI for all questions.
 - You can provide guidance about the CV generator proactively.
 - Try to keep responses short.
-- Be helpful, smart, clear, and friendly.`;
+- Be helpful, smart, clear, and friendly.
 
-// AI route (POST)
+
+`;
+
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
@@ -98,16 +124,14 @@ app.post("/api/chat", async (req, res) => {
 
     conversationHistory.push({ role: "user", content: userMessage });
 
-    let conversationText =
-      `${websiteInfo}\n\nUser: ${userMessage}\n\nConversation so far:\n` +
+    // Build full conversation
+    const conversationText =
+      `${systemMessage}\n\n` +
       conversationHistory
-        .map(msg =>
-          msg.role === "user"
-            ? `User: ${msg.content}`
-            : `Assistant: ${msg.content}`
-        )
+        .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
         .join("\n");
 
+    // Call OpenAI
     const completion = await openai.responses.create({
       model: "gpt-4o-mini",
       input: conversationText
@@ -120,17 +144,21 @@ app.post("/api/chat", async (req, res) => {
     res.json({ reply: aiReply });
 
   } catch (error) {
-    res.status(500).json({ error: "OpenAI API error", details: error.message });
+    res.status(500).json({ error: "AI error", details: error.message });
   }
 });
 
-// Serve index.html for root
+/* ------------------------------------------------
+   ROOT PAGE
+------------------------------------------------ */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Start server
+/* ------------------------------------------------
+   START SERVER
+------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`🔥 Server running on ${PORT}`);
 });
