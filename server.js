@@ -15,13 +15,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static files
+// Serve static files from public folder
 app.use(express.static(path.join(__dirname, "public")));
 
 // Init OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Conversation memory
+// Keep last 6 messages for conversation memory
 let conversationHistory = [];
 
 /* ------------------------------------------------
@@ -32,7 +32,7 @@ app.get("/api/ping", (req, res) => {
 });
 
 /* ------------------------------------------------
-   🔥 REAL MODEL WARM-UP (FOR FAST FIRST MESSAGE)
+   🔥 REAL MODEL WARM-UP (REDUCES FIRST MESSAGE LAG)
 ------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
@@ -40,17 +40,17 @@ app.get("/api/warm", async (req, res) => {
       model: "gpt-4o-mini",
       input: "hi"
     });
-
-    return res.json({ warmed: true });
+    res.json({ warmed: true });
   } catch (err) {
-    return res.json({ warmed: false, error: err.message });
+    console.error("Warm-up error:", err);
+    res.json({ warmed: false, error: err.message });
   }
 });
 
 /* ------------------------------------------------
    🤖 MAIN AI CHAT ROUTE
 ------------------------------------------------ */
-const systemMessage = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
+const systemMessage = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc.
 You also know everything about this website and its CV generator features, so you can help users directly if their questions relate to it.
 
 ABOUT THE WEBSITE:
@@ -61,21 +61,18 @@ This website is a professional CV generator that creates:
 THE NORMAL CV:
 - Blue & grey design
 - Icons before each section
-- Skill bars automatically fill based on skill level (e.g., Python-80 → shows 80% filled)
+- Skill bars automatically fill based on skill level (Python-80 → bar filled 80%)
 - Fully downloadable as PDF
 
 THE ATS CV:
-- Plain white, simple formatting
-- No icons, no colors
-- No hobbies section
-- Designed for Applicant Tracking Systems
+- Plain white, simple formatting, no icons, no hobbies
 - Fully downloadable as PDF
 
 5 BUTTONS ON THE WEBSITE:
-1. Preview Normal CV  
-2. Download Normal CV  
-3. Preview ATS CV  
-4. Download ATS CV  
+1. Preview Normal CV
+2. Download Normal CV
+3. Preview ATS CV
+4. Download ATS CV
 5. Open AI (opens you)
 
 REQUIRED USER INPUT FORMATS:
@@ -85,27 +82,22 @@ REQUIRED USER INPUT FORMATS:
 • LANGUAGES → english, hindi, french (comma-separated)
 • HOBBIES → reading, coding, football (comma-separated)
 
-TECHNOLOGIES USED: HTML, CSS, JavaScript, Node.js, Express.js, OpenAI API
+TECHNOLOGIES USED:
+HTML, CSS, JavaScript, Node.js, Express.js, and OpenAI API.
 
-Your behavior:
-- Act like a full-featured GPT-4o-mini AI
-- Provide guidance about the CV generator
-- Keep responses short, helpful, and friendly
+Your Behavior:
+- Be helpful, clear, and friendly
+- Short and precise responses
 `;
 
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
-
     if (!userMessage) return res.status(400).json({ error: "No message provided" });
 
     // Save memory
     conversationHistory.push({ role: "user", content: userMessage });
-
-    // Limit to last 6 messages for speed
-    if (conversationHistory.length > 6) {
-      conversationHistory = conversationHistory.slice(-6);
-    }
+    if (conversationHistory.length > 6) conversationHistory = conversationHistory.slice(-6);
 
     const conversationText =
       systemMessage +
@@ -114,14 +106,16 @@ app.post("/api/chat", async (req, res) => {
         .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
         .join("\n");
 
+    // OpenAI request
     const reply = await openai.responses.create({
       model: "gpt-4o-mini",
       input: conversationText
     });
 
-    // Safe extraction to avoid undefined / 500 errors
+    // Safely extract AI text
     let aiReply = "Sorry, I couldn't generate a response.";
     if (
+      reply &&
       reply.output &&
       reply.output[0] &&
       reply.output[0].content &&
@@ -134,7 +128,9 @@ app.post("/api/chat", async (req, res) => {
     conversationHistory.push({ role: "assistant", content: aiReply });
 
     res.json({ reply: aiReply });
+
   } catch (err) {
+    console.error("Chat error:", err);
     res.status(500).json({ error: "AI error", details: err.message });
   }
 });
@@ -150,6 +146,4 @@ app.get("/", (req, res) => {
    START SERVER
 ------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🔥 Server running on ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🔥 Server running on ${PORT}`));
