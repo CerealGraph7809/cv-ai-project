@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
-import fetch from "node-fetch";
 
 dotenv.config();
 
@@ -12,58 +11,46 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-// Serve public folder
+// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// OpenAI init
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Init OpenAI
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ---- LIMIT MEMORY SO AI NEVER SLOWS DOWN ----
+// Conversation memory
 let conversationHistory = [];
-const MAX_MEMORY = 8; // only keep last 8 messages
 
-/* ---------------------------------------------
-   1️⃣ HEALTH CHECK
---------------------------------------------- */
+/* ------------------------------------------------
+   🚀 HEALTH CHECK
+------------------------------------------------ */
 app.get("/api/ping", (req, res) => {
-  res.json({ ok: true });
+  res.json({ status: "online", time: Date.now() });
 });
 
-/* ---------------------------------------------
-   2️⃣ OPENAI WARMER (for UptimeRobot to ping)
---------------------------------------------- */
+/* ------------------------------------------------
+   🔥 REAL MODEL WARM-UP (THIS FIXES 20s LAG)
+------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
+    // tiny warm-up so OpenAI stays hot
     await openai.responses.create({
       model: "gpt-4o-mini",
-      input: "warm"
+      input: "hi"
     });
-    res.json({ warm: true });
-  } catch (e) {
-    res.json({ warm: false, error: e.message });
+
+    return res.json({ warmed: true });
+  } catch (err) {
+    return res.json({ warmed: false, error: err.message });
   }
 });
 
-/* ---------------------------------------------
-   3️⃣ INTERNAL SELF-PING (NO RELIANCE ON UPTIME ROBOT)
---------------------------------------------- */
-const SELF_URL = process.env.RENDER_EXTERNAL_URL;
-if (SELF_URL) {
-  setInterval(async () => {
-    try {
-      await fetch(`${SELF_URL}/api/warm`);
-    } catch {}
-  }, 240000); // every 4 minutes
-}
-
-/* ---------------------------------------------
-   4️⃣ SYSTEM MESSAGE
---------------------------------------------- */
+/* ------------------------------------------------
+   🤖 MAIN AI CHAT ROUTE
+------------------------------------------------ */
 const systemMessage = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
 You also know everything about this website and its CV generator features, so you can help users directly if their questions relate to it.
 
@@ -124,57 +111,54 @@ Your Behavior:
 
 `;
 
-/* ---------------------------------------------
-   5️⃣ MAIN CHAT ROUTE
---------------------------------------------- */
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
 
-    if (!userMessage) {
-      return res.status(400).json({ error: "Message missing" });
-    }
+    if (!userMessage)
+      return res.status(400).json({ error: "No message provided" });
 
-    // maintain small memory
+    // Save memory
     conversationHistory.push({ role: "user", content: userMessage });
-    if (conversationHistory.length > MAX_MEMORY) {
-      conversationHistory.shift();
+
+    // Only keep last 6 messages to avoid long prompt = faster
+    if (conversationHistory.length > 6) {
+      conversationHistory = conversationHistory.slice(-6);
     }
 
-    // build compact conversation
-    let formattedHistory = conversationHistory
-      .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n");
+    const conversationText =
+      systemMessage +
+      "\n\n" +
+      conversationHistory
+        .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+        .join("\n");
 
-    const completion = await openai.responses.create({
+    const reply = await openai.responses.create({
       model: "gpt-4o-mini",
-      input: `${systemMessage}\n\n${formattedHistory}`
+      input: conversationText
     });
 
-    const aiReply = completion.output[0].content[0].text;
+    const aiReply = reply.output[0].content[0].text;
 
     conversationHistory.push({ role: "assistant", content: aiReply });
-    if (conversationHistory.length > MAX_MEMORY) {
-      conversationHistory.shift();
-    }
 
     res.json({ reply: aiReply });
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "AI error", details: err.message });
   }
 });
 
-/* ---------------------------------------------
-   6️⃣ ROOT PAGE
---------------------------------------------- */
+/* ------------------------------------------------
+   ROOT PAGE
+------------------------------------------------ */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-/* ---------------------------------------------
-   7️⃣ START SERVER
---------------------------------------------- */
+/* ------------------------------------------------
+   START SERVER
+------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🔥 Server running on ${PORT}`);
