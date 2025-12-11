@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
+import fetch from "node-fetch";
 
 dotenv.config();
 
@@ -14,45 +15,55 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static files
+// Serve public folder
 app.use(express.static(path.join(__dirname, "public")));
 
-// Init OpenAI
+// OpenAI init
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Conversation memory
+// ---- LIMIT MEMORY SO AI NEVER SLOWS DOWN ----
 let conversationHistory = [];
+const MAX_MEMORY = 8; // only keep last 8 messages
 
-/* ------------------------------------------------
-   🚀 UPTIMEROBOT HEALTH CHECK (FAST)
------------------------------------------------- */
+/* ---------------------------------------------
+   1️⃣ HEALTH CHECK
+--------------------------------------------- */
 app.get("/api/ping", (req, res) => {
-  res.json({ status: "online", time: Date.now() });
+  res.json({ ok: true });
 });
 
-/* ------------------------------------------------
-   🔥 MODEL WARMUP ROUTE (VERY IMPORTANT)
-   - UptimeRobot should ping this every 5 minutes.
-   - Keeps OpenAI model HOT and instant.
------------------------------------------------- */
+/* ---------------------------------------------
+   2️⃣ OPENAI WARMER (for UptimeRobot to ping)
+--------------------------------------------- */
 app.get("/api/warm", async (req, res) => {
   try {
     await openai.responses.create({
       model: "gpt-4o-mini",
-      input: "ping"
+      input: "warm"
     });
-
-    res.json({ warmed: true });
-  } catch (error) {
-    res.json({ warmed: false, error: error.message });
+    res.json({ warm: true });
+  } catch (e) {
+    res.json({ warm: false, error: e.message });
   }
 });
 
-/* ------------------------------------------------
-   🤖 MAIN AI CHAT ROUTE
------------------------------------------------- */
+/* ---------------------------------------------
+   3️⃣ INTERNAL SELF-PING (NO RELIANCE ON UPTIME ROBOT)
+--------------------------------------------- */
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+if (SELF_URL) {
+  setInterval(async () => {
+    try {
+      await fetch(`${SELF_URL}/api/warm`);
+    } catch {}
+  }, 240000); // every 4 minutes
+}
+
+/* ---------------------------------------------
+   4️⃣ SYSTEM MESSAGE
+--------------------------------------------- */
 const systemMessage = `You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
 You also know everything about this website and its CV generator features, so you can help users directly if their questions relate to it.
 
@@ -111,53 +122,59 @@ Your Behavior:
 - Try to keep responses short.
 - Be helpful, smart, clear, and friendly.
 
-
 `;
 
+/* ---------------------------------------------
+   5️⃣ MAIN CHAT ROUTE
+--------------------------------------------- */
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
 
     if (!userMessage) {
-      return res.status(400).json({ error: "No message provided" });
+      return res.status(400).json({ error: "Message missing" });
     }
 
+    // maintain small memory
     conversationHistory.push({ role: "user", content: userMessage });
+    if (conversationHistory.length > MAX_MEMORY) {
+      conversationHistory.shift();
+    }
 
-    // Build full conversation
-    const conversationText =
-      `${systemMessage}\n\n` +
-      conversationHistory
-        .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
-        .join("\n");
+    // build compact conversation
+    let formattedHistory = conversationHistory
+      .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n");
 
-    // Call OpenAI
     const completion = await openai.responses.create({
       model: "gpt-4o-mini",
-      input: conversationText
+      input: `${systemMessage}\n\n${formattedHistory}`
     });
 
     const aiReply = completion.output[0].content[0].text;
 
     conversationHistory.push({ role: "assistant", content: aiReply });
+    if (conversationHistory.length > MAX_MEMORY) {
+      conversationHistory.shift();
+    }
 
     res.json({ reply: aiReply });
 
-  } catch (error) {
-    res.status(500).json({ error: "AI error", details: error.message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-/* ------------------------------------------------
-   ROOT PAGE
------------------------------------------------- */
+/* ---------------------------------------------
+   6️⃣ ROOT PAGE
+--------------------------------------------- */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-/* ------------------------------------------------
-   START SERVER
------------------------------------------------- */
+/* ---------------------------------------------
+   7️⃣ START SERVER
+--------------------------------------------- */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🔥 Server running on ${PORT}`);
