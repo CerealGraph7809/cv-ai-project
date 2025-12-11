@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 
-// Fix for __dirname in ES modules
+// ESM-safe __filename and __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -15,9 +15,13 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-
-// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
+
+// Check if API key exists
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ OPENAI_API_KEY not set! Add it in Render secrets.");
+  process.exit(1);
+}
 
 // Init OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -33,7 +37,7 @@ app.get("/api/ping", (req, res) => {
 });
 
 /* ------------------------------------------------
-   🔥 REAL MODEL WARM-UP (FIXES FIRST-MESSAGE LAG)
+   🔥 MODEL WARM-UP (FIX 20s LAG)
 ------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
@@ -43,7 +47,8 @@ app.get("/api/warm", async (req, res) => {
     });
     res.json({ warmed: true });
   } catch (err) {
-    res.json({ warmed: false, error: err.message });
+    console.error("Warm-up failed:", err);
+    res.status(500).json({ warmed: false, error: err.message });
   }
 });
 
@@ -83,33 +88,27 @@ THE ATS CV:
 REQUIRED USER INPUT FORMATS (Very Important):
 • WORK EXPERIENCE → Role | Company | Year | Description
 • EDUCATION → Degree | Institute | Year
-• SKILLS → SkillName-Number, SkillName-Number (Example: Python-90, JavaScript-60)
+• SKILLS → SkillName-Number, SkillName-Number (e.g., Python-90, JavaScript-60)
 • LANGUAGES → english, hindi, french (comma-separated)
 • HOBBIES → reading, coding, football (comma-separated)
-
-If users enter incorrect formatting, especially in Skills or Hobbies, the CV layout may break. Only explain formatting issues when relevant.
 
 TECHNOLOGIES USED TO BUILD THE WEBSITE:
 HTML, CSS, JavaScript, Node.js, Express.js, and the OpenAI API.
 
 Your Behavior:
 - Act like a full-featured GPT-4o-mini AI for all questions.
-- Provide guidance about the CV generator proactively.
-- Keep responses short.
+- Try to keep responses short.
 - Be helpful, smart, clear, and friendly.
 `;
 
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
+    if (!userMessage) return res.status(400).json({ error: "No message provided" });
 
-    if (!userMessage)
-      return res.status(400).json({ error: "No message provided" });
-
-    // Save memory
     conversationHistory.push({ role: "user", content: userMessage });
 
-    // Keep last 6 messages to reduce prompt size
+    // Limit last 6 messages for performance
     if (conversationHistory.length > 6) {
       conversationHistory = conversationHistory.slice(-6);
     }
@@ -117,22 +116,21 @@ app.post("/api/chat", async (req, res) => {
     const conversationText =
       systemMessage +
       "\n\n" +
-      conversationHistory
-        .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
-        .join("\n");
+      conversationHistory.map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`).join("\n");
 
     const reply = await openai.responses.create({
       model: "gpt-4o-mini",
       input: conversationText
     });
 
-    const aiReply = reply.output[0].content[0].text;
+    const aiReply = reply.output?.[0]?.content?.[0]?.text || "AI returned no text";
 
     conversationHistory.push({ role: "assistant", content: aiReply });
 
     res.json({ reply: aiReply });
 
   } catch (err) {
+    console.error("AI ERROR:", err);
     res.status(500).json({ error: "AI error", details: err.message });
   }
 });
@@ -149,5 +147,5 @@ app.get("/", (req, res) => {
 ------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🔥 Server running on ${PORT}`);
+  console.log(`🔥 Server running on ${PORT}`);
 });
