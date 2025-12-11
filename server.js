@@ -8,10 +8,9 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const _dirname = path.dirname(_filename);
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -32,16 +31,15 @@ app.get("/api/ping", (req, res) => {
 });
 
 /* ------------------------------------------------
-   🔥 REAL MODEL WARM-UP (THIS FIXES 20s LAG)
+   🔥 MODEL WARM-UP (THIS MAKES FIRST MESSAGE FAST)
+   - UptimeRobot should ping this every 5 minutes
 ------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
-    // tiny warm-up so OpenAI stays hot
     await openai.responses.create({
       model: "gpt-4o-mini",
       input: "hi"
     });
-
     return res.json({ warmed: true });
   } catch (err) {
     return res.json({ warmed: false, error: err.message });
@@ -108,7 +106,6 @@ Your Behavior:
 - You can provide guidance about the CV generator proactively.
 - Try to keep responses short.
 - Be helpful, smart, clear, and friendly.
-
 `;
 
 app.post("/api/chat", async (req, res) => {
@@ -118,10 +115,10 @@ app.post("/api/chat", async (req, res) => {
     if (!userMessage)
       return res.status(400).json({ error: "No message provided" });
 
-    // Save memory
+    // Save user message
     conversationHistory.push({ role: "user", content: userMessage });
 
-    // Only keep last 6 messages to avoid long prompt = faster
+    // Keep last 6 messages for speed
     if (conversationHistory.length > 6) {
       conversationHistory = conversationHistory.slice(-6);
     }
@@ -130,7 +127,7 @@ app.post("/api/chat", async (req, res) => {
       systemMessage +
       "\n\n" +
       conversationHistory
-        .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+        .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
         .join("\n");
 
     const reply = await openai.responses.create({
@@ -138,13 +135,23 @@ app.post("/api/chat", async (req, res) => {
       input: conversationText
     });
 
-    const aiReply = reply.output[0].content[0].text;
+    // SAFELY GET AI RESPONSE
+    let aiReply = "Sorry, I couldn't get a response.";
+    if (
+      reply.output &&
+      reply.output.length > 0 &&
+      reply.output[0].content &&
+      reply.output[0].content.length > 0
+    ) {
+      aiReply = reply.output[0].content[0].text || aiReply;
+    }
 
     conversationHistory.push({ role: "assistant", content: aiReply });
 
     res.json({ reply: aiReply });
 
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "AI error", details: err.message });
   }
 });
@@ -161,5 +168,5 @@ app.get("/", (req, res) => {
 ------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🔥 Server running on ${PORT}`);
+  console.log(`🔥 Server running on ${PORT}`);
 });
