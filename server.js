@@ -7,7 +7,6 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 
-// ESM-safe __filename and __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -15,18 +14,16 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from 'public'
 app.use(express.static(path.join(__dirname, "public")));
 
-// Check if API key exists
-if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ OPENAI_API_KEY not set! Add it in Render secrets.");
-  process.exit(1);
-}
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-// Init OpenAI
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Conversation memory
+// Conversation memory (limited to last 6 messages)
 let conversationHistory = [];
 
 /* ------------------------------------------------
@@ -37,7 +34,8 @@ app.get("/api/ping", (req, res) => {
 });
 
 /* ------------------------------------------------
-   🔥 MODEL WARM-UP (FIX 20s LAG)
+   🔥 MODEL WARM-UP (Fixes 20s first message lag)
+   - UptimeRobot should ping this every 5 minutes
 ------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
@@ -47,8 +45,7 @@ app.get("/api/warm", async (req, res) => {
     });
     res.json({ warmed: true });
   } catch (err) {
-    console.error("Warm-up failed:", err);
-    res.status(500).json({ warmed: false, error: err.message });
+    res.json({ warmed: false, error: err.message });
   }
 });
 
@@ -85,52 +82,60 @@ THE ATS CV:
 4. Download ATS CV  
 5. Open AI (opens you)
 
-REQUIRED USER INPUT FORMATS (Very Important):
+REQUIRED USER INPUT FORMATS:
 • WORK EXPERIENCE → Role | Company | Year | Description
 • EDUCATION → Degree | Institute | Year
 • SKILLS → SkillName-Number, SkillName-Number (e.g., Python-90, JavaScript-60)
 • LANGUAGES → english, hindi, french (comma-separated)
 • HOBBIES → reading, coding, football (comma-separated)
 
-TECHNOLOGIES USED TO BUILD THE WEBSITE:
-HTML, CSS, JavaScript, Node.js, Express.js, and the OpenAI API.
+TECHNOLOGIES USED:
+HTML, CSS, JS, Node.js, Express.js, OpenAI API.
 
-Your Behavior:
-- Act like a full-featured GPT-4o-mini AI for all questions.
-- Try to keep responses short.
-- Be helpful, smart, clear, and friendly.
+Your behavior:
+- Act like a full-featured GPT-4o-mini AI
+- Provide guidance about CV generator proactively
+- Keep responses short, helpful, and clear
 `;
 
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
+
     if (!userMessage) return res.status(400).json({ error: "No message provided" });
 
+    // Save memory
     conversationHistory.push({ role: "user", content: userMessage });
 
-    // Limit last 6 messages for performance
+    // Limit conversation history to last 6 messages
     if (conversationHistory.length > 6) {
       conversationHistory = conversationHistory.slice(-6);
     }
 
+    // Build the conversation prompt
     const conversationText =
       systemMessage +
       "\n\n" +
-      conversationHistory.map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`).join("\n");
+      conversationHistory
+        .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+        .join("\n");
 
+    // Call OpenAI
     const reply = await openai.responses.create({
       model: "gpt-4o-mini",
       input: conversationText
     });
 
+    // Safely extract AI reply
     const aiReply = reply.output?.[0]?.content?.[0]?.text || "AI returned no text";
 
+    // Save assistant response
     conversationHistory.push({ role: "assistant", content: aiReply });
 
     res.json({ reply: aiReply });
 
   } catch (err) {
-    console.error("AI ERROR:", err);
+    console.error("AI error:", err);
     res.status(500).json({ error: "AI error", details: err.message });
   }
 });
