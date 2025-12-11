@@ -11,17 +11,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
-// Serve static files
+// Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 
-// Init OpenAI
+// Initialize OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Conversation memory (global, last 6 messages)
+// Conversation memory
 let conversationHistory = [];
 
 /* ------------------------------------------------
@@ -32,8 +31,8 @@ app.get("/api/ping", (req, res) => {
 });
 
 /* ------------------------------------------------
-   🔥 REAL MODEL WARM-UP (FAST FIRST RESPONSE)
-   UptimeRobot should ping this every 5 minutes
+   🔥 MODEL WARM-UP (FAST FIRST RESPONSE)
+   - Ping this every 5 minutes with UptimeRobot
 ------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
@@ -41,9 +40,9 @@ app.get("/api/warm", async (req, res) => {
       model: "gpt-4o-mini",
       input: "ping"
     });
-    return res.json({ warmed: true });
+    res.json({ warmed: true });
   } catch (err) {
-    return res.json({ warmed: false, error: err.message });
+    res.json({ warmed: false, error: err.message });
   }
 });
 
@@ -83,10 +82,11 @@ THE ATS CV:
 REQUIRED USER INPUT FORMATS (Very Important):
 • WORK EXPERIENCE → Role | Company | Year | Description
 • EDUCATION → Degree | Institute | Year
-• SKILLS → SkillName-Number, SkillName-Number
-  Example: Python-90, JavaScript-60
+• SKILLS → SkillName-Number, SkillName-Number (Example: Python-90, JavaScript-60)
 • LANGUAGES → english, hindi, french (comma-separated)
 • HOBBIES → reading, coding, football (comma-separated)
+
+If users enter incorrect formatting, especially in Skills or Hobbies, the CV layout may break. Only explain formatting issues when relevant.
 
 TECHNOLOGIES USED TO BUILD THE WEBSITE:
 HTML, CSS, JavaScript, Node.js, Express.js, and the OpenAI API.
@@ -94,26 +94,22 @@ HTML, CSS, JavaScript, Node.js, Express.js, and the OpenAI API.
 Your Behavior:
 - Act like a full-featured GPT-4o-mini AI for all questions.
 - Provide guidance about the CV generator proactively.
-- Keep responses short, helpful, clear, and friendly.
+- Keep responses short, helpful, smart, and clear.
 `;
 
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
+    if (!userMessage) return res.status(400).json({ error: "No message provided" });
 
-    if (!userMessage) {
-      return res.status(400).json({ error: "No message provided" });
-    }
-
-    // Save memory
+    // Save conversation memory
     conversationHistory.push({ role: "user", content: userMessage });
 
-    // Only keep last 6 messages to avoid long prompt = faster
+    // Keep last 6 messages only
     if (conversationHistory.length > 6) {
       conversationHistory = conversationHistory.slice(-6);
     }
 
-    // Build conversation text
     const conversationText =
       systemMessage +
       "\n\n" +
@@ -121,26 +117,18 @@ app.post("/api/chat", async (req, res) => {
         .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
         .join("\n");
 
-    // Call OpenAI
     const reply = await openai.responses.create({
       model: "gpt-4o-mini",
       input: conversationText
     });
 
-    // Safe optional chaining to prevent undefined
-    const aiReply = reply.output?.[0]?.content?.[0]?.text || "Sorry, something went wrong.";
-
-    // Save AI reply
+    const aiReply = reply.output[0].content[0].text;
     conversationHistory.push({ role: "assistant", content: aiReply });
-
-    // Logging
-    console.log("User:", userMessage);
-    console.log("AI:", aiReply);
 
     res.json({ reply: aiReply });
 
   } catch (err) {
-    console.error("Error in /api/chat:", err);
+    console.error("AI Error:", err.message);
     res.status(500).json({ error: "AI error", details: err.message });
   }
 });
