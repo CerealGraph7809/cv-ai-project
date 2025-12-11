@@ -7,10 +7,12 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 
+// Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -31,8 +33,7 @@ app.get("/api/ping", (req, res) => {
 });
 
 /* ------------------------------------------------
-   🔥 MODEL WARM-UP (THIS MAKES FIRST MESSAGE FAST)
-   - UptimeRobot should ping this every 5 minutes
+   🔥 REAL MODEL WARM-UP (FIXES FIRST-MESSAGE LAG)
 ------------------------------------------------ */
 app.get("/api/warm", async (req, res) => {
   try {
@@ -40,9 +41,9 @@ app.get("/api/warm", async (req, res) => {
       model: "gpt-4o-mini",
       input: "hi"
     });
-    return res.json({ warmed: true });
+    res.json({ warmed: true });
   } catch (err) {
-    return res.json({ warmed: false, error: err.message });
+    res.json({ warmed: false, error: err.message });
   }
 });
 
@@ -80,21 +81,11 @@ THE ATS CV:
 5. Open AI (opens you)
 
 REQUIRED USER INPUT FORMATS (Very Important):
-• WORK EXPERIENCE →  
-  Role | Company | Year | Description
-
-• EDUCATION →  
-  Degree | Institute | Year
-
-• SKILLS → (Extremely important formatting)  
-  SkillName-Number, SkillName-Number  
-  Example: Python-90, JavaScript-60
-
-• LANGUAGES →  
-  english, hindi, french (comma-separated)
-
-• HOBBIES →  
-  reading, coding, football (comma-separated)
+• WORK EXPERIENCE → Role | Company | Year | Description
+• EDUCATION → Degree | Institute | Year
+• SKILLS → SkillName-Number, SkillName-Number (Example: Python-90, JavaScript-60)
+• LANGUAGES → english, hindi, french (comma-separated)
+• HOBBIES → reading, coding, football (comma-separated)
 
 If users enter incorrect formatting, especially in Skills or Hobbies, the CV layout may break. Only explain formatting issues when relevant.
 
@@ -103,8 +94,8 @@ HTML, CSS, JavaScript, Node.js, Express.js, and the OpenAI API.
 
 Your Behavior:
 - Act like a full-featured GPT-4o-mini AI for all questions.
-- You can provide guidance about the CV generator proactively.
-- Try to keep responses short.
+- Provide guidance about the CV generator proactively.
+- Keep responses short.
 - Be helpful, smart, clear, and friendly.
 `;
 
@@ -115,10 +106,10 @@ app.post("/api/chat", async (req, res) => {
     if (!userMessage)
       return res.status(400).json({ error: "No message provided" });
 
-    // Save user message
+    // Save memory
     conversationHistory.push({ role: "user", content: userMessage });
 
-    // Keep last 6 messages for speed
+    // Keep last 6 messages to reduce prompt size
     if (conversationHistory.length > 6) {
       conversationHistory = conversationHistory.slice(-6);
     }
@@ -127,7 +118,7 @@ app.post("/api/chat", async (req, res) => {
       systemMessage +
       "\n\n" +
       conversationHistory
-        .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+        .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
         .join("\n");
 
     const reply = await openai.responses.create({
@@ -135,23 +126,13 @@ app.post("/api/chat", async (req, res) => {
       input: conversationText
     });
 
-    // SAFELY GET AI RESPONSE
-    let aiReply = "Sorry, I couldn't get a response.";
-    if (
-      reply.output &&
-      reply.output.length > 0 &&
-      reply.output[0].content &&
-      reply.output[0].content.length > 0
-    ) {
-      aiReply = reply.output[0].content[0].text || aiReply;
-    }
+    const aiReply = reply.output[0].content[0].text;
 
     conversationHistory.push({ role: "assistant", content: aiReply });
 
     res.json({ reply: aiReply });
 
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "AI error", details: err.message });
   }
 });
