@@ -528,7 +528,7 @@ async function sendAIMessage(){
     const thinkingDivEl = $("thinkingIndicator");
     if(thinkingDivEl) thinkingDivEl.remove();
 
-    aiBody.innerHTML += <div style="color:red"><b>AI:</b> Error connecting</div>;
+    aiBody.innerHTML += `<div style="color:red"><b>AI:</b> Error connecting</div>`;
     aiBody.scrollTop = aiBody.scrollHeight;
   } finally {
     aiThinking = false;
