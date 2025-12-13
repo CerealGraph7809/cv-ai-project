@@ -488,12 +488,21 @@ async function sendAIMessage(){
     aiSend.disabled = true;
 
     // Show thinking indicator
+    // Show thinking indicator
     const thinkingDiv = document.createElement("div");
     thinkingDiv.id = "thinkingIndicator";
-    thinkingDiv.innerHTML = `<b>AI:</b> <i>Thinking...</i>`;
+
+    const bold = document.createElement("b");
+    bold.innerText = "AI:";
+
+    const italic = document.createElement("i");
+    italic.innerText = " Thinking...";
+
+    thinkingDiv.appendChild(bold);
+    thinkingDiv.appendChild(italic);
+
     aiBody.appendChild(thinkingDiv);
     aiBody.scrollTop = aiBody.scrollHeight;
-
     // Get or generate sessionId for this user
     let sessionId = localStorage.getItem("aiSessionId");
     if(!sessionId){
