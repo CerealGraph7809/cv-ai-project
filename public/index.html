@@ -479,7 +479,7 @@ async function sendAIMessage(){
   if(!msg) return;
 
   // Show user's message
-  aiBody.innerHTML += <div><b>You:</b> ${msg}</div>;
+  aiBody.innerHTML += `<div><b>You:</b> ${msg}</div>`;
   aiInput.value="";
   aiBody.scrollTop = aiBody.scrollHeight;
 
