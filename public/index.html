@@ -522,7 +522,7 @@ async function sendAIMessage(){
     thinkingDiv.remove();
 
     // Show AI response
-    aiBody.innerHTML += <div><b>AI:</b> ${data.reply}</div>;
+    aiBody.innerHTML += `<div><b>AI:</b> ${data.reply}</div>`;
     aiBody.scrollTop = aiBody.scrollHeight;
   } catch(err) {
     const thinkingDivEl = $("thinkingIndicator");
