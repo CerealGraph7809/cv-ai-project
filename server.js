@@ -9,7 +9,7 @@ import crypto from "crypto";
 dotenv.config();
 
 /* ------------------------------------------------
-   FIX __dirname FOR ESM (RENDER SAFE)
+   FIX __dirname FOR ESM
 ------------------------------------------------ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,45 +23,32 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 /* ------------------------------------------------
-   OPENAI INIT
+   OPENAI
 ------------------------------------------------ */
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
 /* ------------------------------------------------
-   🧠 PER-USER MEMORY (NO MIXING)
+   MEMORY
 ------------------------------------------------ */
 const sessions = new Map();
 const MAX_MESSAGES = 6;
 
 /* ------------------------------------------------
-   🚀 HEALTH CHECK (UPTIMEROBOT)
+   HEALTH CHECK
 ------------------------------------------------ */
 app.get("/api/ping", (req, res) => {
   res.json({ status: "online", time: Date.now() });
 });
 
 /* ------------------------------------------------
-   🔥 MODEL WARM-UP (FIXES FIRST MESSAGE LAG)
+   SYSTEM MESSAGE
 ------------------------------------------------ */
-app.get("/api/warm", async (req, res) => {
-  try {
-    await openai.responses.create({
-      model: "gpt-4o-mini",
-      input: "ping"
-    });
-    res.json({ warmed: true });
-  } catch (err) {
-    res.json({ warmed: false, error: err.message });
-  }
-});
-
-/* ------------------------------------------------
-   🤖 SYSTEM MESSAGE (FULL WEBSITE INFO)
------------------------------------------------- */
-const systemMessage = `
-You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
+const systemMessage = {
+  role: "system",
+  content: `
+  You are the built-in AI assistant for this website. You behave like a normal powerful AI (GPT-4o-mini) and can answer ANY question: general knowledge, coding, math, explanations, advice, etc. 
 You also know everything about this website and its CV generator features, so you can help users directly if their questions relate to it.
 
 ABOUT THE WEBSITE:
@@ -119,67 +106,49 @@ Your Behavior:
 - Try to keep responses short.
 - Be helpful, smart, clear, and friendly.
 
-
-
-`;
+- `
+};
 
 /* ------------------------------------------------
-   🤖 MAIN CHAT ROUTE (PER USER MEMORY)
+   CHAT ROUTE
 ------------------------------------------------ */
 app.post("/api/chat", async (req, res) => {
   try {
     const { message, sessionId } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: "No message" });
+    }
 
-    if (!message)
-      return res.status(400).json({ error: "No message provided" });
-
-    // Generate sessionId if missing
     const sid = sessionId || crypto.randomUUID();
 
-    // Init memory for user
     if (!sessions.has(sid)) {
       sessions.set(sid, []);
     }
 
     const history = sessions.get(sid);
 
-    // Add user message
     history.push({ role: "user", content: message });
 
-    // Limit memory (prevents slowdown)
     if (history.length > MAX_MESSAGES) {
       history.splice(0, history.length - MAX_MESSAGES);
     }
 
-    // Build prompt
-    const prompt =
-      systemMessage +
-      "\n\n" +
-      history
-        .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-        .join("\n");
+    const messages = [systemMessage, ...history];
 
-    // OpenAI call
     const response = await openai.responses.create({
       model: "gpt-4o-mini",
-      input: prompt
+      input: messages
     });
 
-    const aiReply = response.output[0].content[0].text;
+    const reply = response.output_text;
 
-    // Save assistant reply
-    history.push({ role: "assistant", content: aiReply });
+    history.push({ role: "assistant", content: reply });
 
-    res.json({
-      reply: aiReply,
-      sessionId: sid
-    });
+    res.json({ reply, sessionId: sid });
 
   } catch (err) {
-    console.error("AI ERROR:", err.message);
-    res.status(500).json({
-      error: "AI service temporarily unavailable"
-    });
+    console.error(err);
+    res.status(500).json({ error: "AI error" });
   }
 });
 
@@ -191,9 +160,9 @@ app.get("/", (req, res) => {
 });
 
 /* ------------------------------------------------
-   START SERVER
+   START
 ------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🔥 Server running on port ${PORT}`);
+  console.log("🔥 Server running on port", PORT);
 });
