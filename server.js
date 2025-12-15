@@ -138,7 +138,7 @@ app.get("/", (req, res) => {
 /* ------------------------------------------------
    CATCH-ALL (ALWAYS LAST)
 ------------------------------------------------ */
-app.use("*", (req, res) => {
+app.use((req, res) => {
   res.status(404).send("Not Found");
 });
 
