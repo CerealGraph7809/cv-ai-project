@@ -116,7 +116,9 @@ app.post("/api/chat", async (req, res) => {
       max_output_tokens: 300 // faster + cheaper
     });
 
-    const reply = response.output_text;
+    const reply =
+  response.output?.[0]?.content?.[0]?.text ||
+  "AI is temporarily unavailable. Please try again.";
 
     session.messages.push({ role: "assistant", content: reply });
 
