@@ -18,14 +18,18 @@ const __dirname = path.dirname(__filename);
    APP SETUP
 ------------------------------------------------ */
 const app = express();
-app.disable("x-powered-by"); // tiny speed + security win
+app.disable("x-powered-by");
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 /* ------------------------------------------------
-   OPENAI (created ONCE)
+   OPENAI CLIENT (SAFE)
 ------------------------------------------------ */
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ OPENAI_API_KEY IS MISSING");
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -35,7 +39,7 @@ const openai = new OpenAI({
 ------------------------------------------------ */
 const sessions = new Map();
 const MAX_MESSAGES = 6;
-const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
+const SESSION_TTL = 30 * 60 * 1000;
 
 // cleanup old sessions
 setInterval(() => {
@@ -48,20 +52,14 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 /* ------------------------------------------------
-   ⚡ PING / WARM ROUTES (UPTIME ROBOT USES THIS)
+   PING / WARM
 ------------------------------------------------ */
 app.get("/api/ping", (req, res) => {
-  res.status(200).json({
-    status: "online",
-    time: Date.now()
-  });
+  res.json({ status: "online", time: Date.now() });
 });
 
 app.get("/api/warm", (req, res) => {
-  res.status(200).json({
-    status: "awake",
-    time: Date.now()
-  });
+  res.json({ status: "awake", time: Date.now() });
 });
 
 /* ------------------------------------------------
@@ -71,7 +69,7 @@ const systemMessage = {
   role: "system",
   content: `
 You are the built-in AI assistant for a professional CV generator website.
-You behave like a full-featured GPT-4o-mini and can answer ANY question.
+You can answer ANY question.
 
 Website:
 - Normal CV: blue/grey, icons, skill bars, PDF
@@ -81,21 +79,20 @@ Input formats:
 Work: Role | Company | Year | Description
 Education: Degree | Institute | Year
 Skills: Skill-Number (e.g. Python-80)
-Languages/Hobbies: comma-separated
 
 Be helpful, clear, friendly, and concise.
 `
 };
 
 /* ------------------------------------------------
-   CHAT ROUTE
+   CHAT ROUTE (BULLETPROOF)
 ------------------------------------------------ */
 app.post("/api/chat", async (req, res) => {
   try {
     const { message, sessionId } = req.body;
 
     if (!message) {
-      return res.status(400).json({ error: "No message" });
+      return res.status(400).json({ reply: "No message provided." });
     }
 
     const sid = sessionId || crypto.randomUUID();
@@ -113,52 +110,54 @@ app.post("/api/chat", async (req, res) => {
     session.messages.push({ role: "user", content: message });
 
     if (session.messages.length > MAX_MESSAGES) {
-      session.messages.splice(
-        0,
-        session.messages.length - MAX_MESSAGES
-      );
+      session.messages.splice(0, session.messages.length - MAX_MESSAGES);
     }
 
     const messages = [systemMessage, ...session.messages];
 
+    // 🔥 OpenAI call
     const response = await openai.responses.create({
       model: "gpt-4o-mini",
       input: messages,
       max_output_tokens: 300
     });
 
+    // ✅ SAFE extraction
     const reply =
-      response.output?.[0]?.content?.[0]?.text ||
-      "AI is temporarily unavailable. Please try again.";
+      response?.output?.[0]?.content?.[0]?.text ??
+      "AI responded with no text.";
 
     session.messages.push({ role: "assistant", content: reply });
 
     res.json({ reply, sessionId: sid });
 
   } catch (err) {
-    console.error("AI ERROR:", err);
+    // 🔍 REAL ERROR LOGGING
+    console.error("🔥 OPENAI ERROR DETAILS:");
+    console.error(err?.status, err?.message, err?.error);
+
     res.status(500).json({
-      reply: "AI error. Please try again shortly."
+      reply: err?.message || "OpenAI request failed"
     });
   }
 });
 
 /* ------------------------------------------------
-   ROOT (FRONTEND)
+   ROOT
 ------------------------------------------------ */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 /* ------------------------------------------------
-   404 (ALWAYS LAST)
+   404 (LAST)
 ------------------------------------------------ */
 app.use((req, res) => {
   res.status(404).send("Not Found");
 });
 
 /* ------------------------------------------------
-   START SERVER
+   START
 ------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
