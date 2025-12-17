@@ -31,13 +31,13 @@ const openai = new OpenAI({
 });
 
 /* ------------------------------------------------
-   MEMORY (optimized, same behavior)
+   MEMORY
 ------------------------------------------------ */
 const sessions = new Map();
 const MAX_MESSAGES = 6;
 const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
 
-// cleanup old sessions (keeps server fast long-term)
+// cleanup old sessions
 setInterval(() => {
   const now = Date.now();
   for (const [sid, session] of sessions) {
@@ -48,8 +48,15 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 /* ------------------------------------------------
-   ⚡ FAST PING / WARM ROUTE
+   ⚡ PING / WARM ROUTES (UPTIME ROBOT USES THIS)
 ------------------------------------------------ */
+app.get("/api/ping", (req, res) => {
+  res.status(200).json({
+    status: "online",
+    time: Date.now()
+  });
+});
+
 app.get("/api/warm", (req, res) => {
   res.status(200).json({
     status: "awake",
@@ -58,7 +65,7 @@ app.get("/api/warm", (req, res) => {
 });
 
 /* ------------------------------------------------
-   SYSTEM MESSAGE (SHORT = FAST)
+   SYSTEM MESSAGE
 ------------------------------------------------ */
 const systemMessage = {
   role: "system",
@@ -81,11 +88,12 @@ Be helpful, clear, friendly, and concise.
 };
 
 /* ------------------------------------------------
-   CHAT ROUTE (FAST + SAFE)
+   CHAT ROUTE
 ------------------------------------------------ */
 app.post("/api/chat", async (req, res) => {
   try {
     const { message, sessionId } = req.body;
+
     if (!message) {
       return res.status(400).json({ error: "No message" });
     }
@@ -105,7 +113,10 @@ app.post("/api/chat", async (req, res) => {
     session.messages.push({ role: "user", content: message });
 
     if (session.messages.length > MAX_MESSAGES) {
-      session.messages.splice(0, session.messages.length - MAX_MESSAGES);
+      session.messages.splice(
+        0,
+        session.messages.length - MAX_MESSAGES
+      );
     }
 
     const messages = [systemMessage, ...session.messages];
@@ -113,20 +124,22 @@ app.post("/api/chat", async (req, res) => {
     const response = await openai.responses.create({
       model: "gpt-4o-mini",
       input: messages,
-      max_output_tokens: 300 // faster + cheaper
+      max_output_tokens: 300
     });
 
     const reply =
-  response.output?.[0]?.content?.[0]?.text ||
-  "AI is temporarily unavailable. Please try again.";
+      response.output?.[0]?.content?.[0]?.text ||
+      "AI is temporarily unavailable. Please try again.";
 
     session.messages.push({ role: "assistant", content: reply });
 
     res.json({ reply, sessionId: sid });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "AI error" });
+    console.error("AI ERROR:", err);
+    res.status(500).json({
+      reply: "AI error. Please try again shortly."
+    });
   }
 });
 
@@ -138,14 +151,14 @@ app.get("/", (req, res) => {
 });
 
 /* ------------------------------------------------
-   CATCH-ALL (ALWAYS LAST)
+   404 (ALWAYS LAST)
 ------------------------------------------------ */
 app.use((req, res) => {
   res.status(404).send("Not Found");
 });
 
 /* ------------------------------------------------
-   START
+   START SERVER
 ------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
